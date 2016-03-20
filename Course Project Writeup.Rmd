@@ -17,6 +17,10 @@ Having processed the data and splitting into training and testing sets, we use t
 
 Our model is based on the random forests approach and 10-fold cross validation. When used on our testing set we get an accuracy of 95%.
 
+Please note: data sourced from Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz43TBXVGjZ
+
 
 ## Pre-processing data
 
@@ -230,4 +234,4 @@ answers
 
 ```
 
-These answers will be used in a separate quiz
+These answers will be used in a separate quiz.

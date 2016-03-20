@@ -124,6 +124,8 @@ $(document).ready(function () {
 <p>The paper details our attempt to build a model to predict how well an individual is performing an exercise. We have five categories of outcome - one where the exercise is performed correctly and four where it is performed incorrectly in different ways. The dataset is based on measurements of 6 individuals performing 10 repetitions of the exercise in each way (correctly and incorrectly).</p>
 <p>Having processed the data and splitting into training and testing sets, we use the caret package to train a model to predict the way the exercise has been performed based on the remaining measurements.</p>
 <p>Our model is based on the random forests approach and 10-fold cross validation. When used on our testing set we get an accuracy of 95%.</p>
+<p>Please note: data sourced from Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13) . Stuttgart, Germany: ACM SIGCHI, 2013.</p>
+<p>Read more: <a href="http://groupware.les.inf.puc-rio.br/har#ixzz43TBXVGjZ" class="uri">http://groupware.les.inf.puc-rio.br/har#ixzz43TBXVGjZ</a></p>
 </div>
 <div id="pre-processing-data" class="section level2">
 <h2>Pre-processing data</h2>
@@ -487,7 +489,7 @@ answers &lt;- predict(modelTree,procEval)
 answers</code></pre>
 <pre><code>##  [1] B A A A A E D B A A A C B A E E A B B B
 ## Levels: A B C D E</code></pre>
-<p>These answers will be used in a separate quiz</p>
+<p>These answers will be used in a separate quiz.</p>
 </div>
 
 

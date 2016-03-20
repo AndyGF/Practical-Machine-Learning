@@ -1,0 +1,233 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Andrew Forrest"
+date: "19 March 2016"
+output: html_document
+---
+
+```{r}
+library(caret)
+```
+
+## Synopsis
+
+The paper details our attempt to build a model to predict how well an individual is performing an exercise. We have five categories of outcome - one where the exercise is performed correctly and four where it is performed incorrectly in different ways. The dataset is based on measurements of 6 individuals performing 10 repetitions of the exercise in each way (correctly and incorrectly).
+
+Having processed the data and splitting into training and testing sets, we use the caret package to train a model to predict the way the exercise has been performed based on the remaining measurements.
+
+Our model is based on the random forests approach and 10-fold cross validation. When used on our testing set we get an accuracy of 95%.
+
+
+## Pre-processing data
+
+Our complete training data set is loaded from our working directory
+```{r cache=TRUE}
+
+exercise_data <- read.csv("pml-training.csv")
+dim(exercise_data)
+```
+
+
+Our data set has 160 variables. However, examination of the summary (not reproduced here due to space constraints) shows that not all of these variables are complete, and so we can look to simplify our model building by removing some of the variables.
+
+The first variable we can remove is the first column (labeled X). This simply numbers each observation.
+```{r cache=TRUE}
+exercise_data <- exercise_data[,-1]
+```
+
+Next, we look for columns with incomplete values. We can use R to examine the number of NAs in each column:
+
+```{r cache=TRUE}
+checkNAs <- function(x) {
+     output <- vector()
+     for(i in 1:length(names(x))){
+          y <- sum(is.na(x[,i]))
+          output <- c(output,y)
+     }
+     output
+}
+
+checkNAs(exercise_data)
+```
+
+we see that there are two catergories of variable. One has no NA values, the other has the majority (19216 out of 19622) of values as NA. When we do a similar analysis for variables with blank values (given by "", ignoring the NA values), we see a similar result:
+
+```{r cache=TRUE}
+checkblanks <- function(x) {
+     output <- vector()
+     for(i in 1:length(names(x))){
+          y <- sum(x[,i]=="",na.rm = TRUE)
+          output <- c(output,y)
+     }
+     output
+}
+
+checkblanks(exercise_data)
+```
+
+
+Visually examining our data frame in more detail (not reproduced here due to space constraints), we see that some variables are only observed at the end of each time window (where new_window = yes). These variables are calculated based on the observations in the previous time window. If we examine the data further, we see that we do not have a complete set of time windows covered in the data set (858 out of 864), and we have only some end of window observations (406):
+
+```{r cache=TRUE}
+summary(exercise_data$num_window)
+length(table(exercise_data$num_window))
+dim(exercise_data[exercise_data$new_window=="yes",])
+```
+
+For future predictions we do not know whether we will have these average values. We can therefore choose to eliminate the columns which include these end of window observations. To do this, we create a vector of the column numbers for the columns we want to remove (those with majority NA or blank values):
+
+```{r cache=TRUE}
+removeblanks <- function(x){
+     output <- vector()
+     for(i in 1:length(names(x))){
+          if( sum(x[,i]=="",na.rm = TRUE) >0 ){
+               output <- c(output,i)
+          }
+          
+     }
+     
+     output
+     
+}
+
+blanks_vector <- removeblanks(exercise_data)
+
+removeNAs <- function(x){
+     output <- vector()
+     for(i in 1:length(names(x))){
+          if(sum(is.na(x[,i]))>0){
+               output <- c(output,i)
+          }
+          
+     }
+     
+     output
+     
+}
+
+NAs_vector <- removeNAs(exercise_data)
+
+exercise_data_new <- exercise_data[,-c(blanks_vector,NAs_vector)]
+dim(exercise_data_new)
+```
+
+The next variables to consider are the timestamp variables. The cvtd timestamp identifies which day and time the observation was taken on. We could use this to help train the model, as we may expect similar outcomes would occur at similar times in our existing dataset. However, the aim of the model is to use measurements of movement to predict how the exercise is being done. Future measurements could be taken on any day, at any time, and this will have no link to how the exercise is being done. We therefore choose to remove this variable.
+
+We can similarly consider the other two timestamp variables. raw timestamp part 1 identifies the time window, while raw timestamp part 2 measures the time within each window. However, the time windows do not correspond to specific repetitions of the exercise and we do not know which order the different participants completed each exercise. Therefore, measurements with similar values for these variable may not correspond to a similar position of the exercise. As with the cvtd timestamp, we also want to be able to use our model on possible future measurements, for which the timestamp data may have no link to the exercise.
+
+As we are ignoring timestamp data, we can also ignore the new window and num window variables.
+
+These variables are in columns 2:6 of our updated data frame.
+
+The final variable to consider is the user name. Checking the distribution of the outcomes against each user, we see that each user has a distribution of outcomes, and each outcome has a different number of observations per user. We may therefore expect that the user_name will have limited impact on determining the outcome. Further, the purpose of the exercise is to use measurements to judge how well an exercise is being done. This shouldn't depend on the user, as all were asked to do each exercise in a similar way. Further, we would like our model to be applicable for other users in future who did not take part in the test and so we cut out the user name variable in the first column.
+
+```{r cache=TRUE}
+exercise_data_new <- exercise_data_new[,-c(1:6)]
+dim(exercise_data_new)
+```
+
+We are now left with 53 variables measuring movement. Looking at the structure, some are recorded as integer variables, and some as numeric variables. For simplicity we can convert all integer variables to numeric format:
+
+```{r cache=TRUE}
+str(exercise_data_new)
+
+tonumeric <- function(x) {
+     for(i in 1:length(names(x))){
+          if(is.integer(x[,i])){
+               x[,i] <- as.numeric(x[,i])
+          }
+     }
+     x
+}
+
+exercise_data_new <- tonumeric(exercise_data_new)
+
+```
+
+Our remaining variables cover the movement measurements. We may expect that many of these are correlated, as they cover x, y, and z values of the same movement, as well as the acceleration which will be dependent on how fast the changes in x, y and z are. We can check how many of the correlations (ignoring the outcome) are significant (over 80%):
+```{r cache=TRUE}
+corr_matrix <- abs(cor(exercise_data_new[,-53]))
+diag(corr_matrix) <- 0
+corr_variables <- which(corr_matrix>0.8, arr.ind = TRUE)
+corr_variables
+dim(corr_variables)
+```
+
+It would therefore make sense to perform a Principal Components Analysis on our data:
+
+```{r cache=TRUE}
+exercise_dataPCA <- prcomp(exercise_data_new[,-53])
+summary(exercise_dataPCA)
+```
+
+We see that the first 9 principal components cover 95% of the variance, so we can consider using these in our model.
+
+## Cross Validation
+
+Our training set covers 19622 observations. We will want to break this down so we can cross-validate our model. The first stage is to create ourselves a separate testing set to evaluate our model once made. Our data set is large, so the remaining data can then have cross-validation methods applied to improve the model.
+
+```{r cache=TRUE}
+inTrain <- createDataPartition(y=exercise_data_new$classe,p=0.7,list=FALSE)
+
+training_set <- exercise_data_new[inTrain,]
+testing_set <- exercise_data_new[-inTrain,]
+```
+
+## Model building
+
+Our aim is to create a model that can predict how an exercise is being performed from a range of five options (classification) rather than predicting an average value (regression). An initial proposal is therefore to use a model based on decision trees, specifically a random forest approach.
+
+We first pre-process our data as set out above, getting the first 9 principal components.
+```{r  cache=TRUE}
+pre_procExcer <- preProcess(training_set[,-53],method="pca",pcaComp=9)
+procTrain <- predict(pre_procExcer,training_set[,-53])
+
+```
+
+We then want to set up some cross-validation to use in our model. We choose initially a 10-fold cross validation.
+
+```{r  cache=TRUE}
+modelControl <- trainControl(method="cv",number=10)
+```
+
+Now we attempt to build our model. To check the model building has worked, we can compare the outputs from reapplying our model to the pre-processed data set with the actual outcomes:
+
+```{r  cache=TRUE}
+modelTree <- train(training_set$classe~., data=procTrain,method="rf",trControl=modelControl)
+
+predictions <- predict(modelTree,procTrain)
+table(predictions, training_set$classe)
+```
+
+From this we see all predicted outputs match with actual outputs. This should be expected, given the cross-validation and ensemble method (random forests) used to create the model.
+
+The concern is then that we have over-fitted the model to the data. We therefore can apply the testing dataset to check the accuracy of the model to new data (the out of sample error). First we need to pre-process the testing set using our Principal Components Analysis. We then use this and our model to generate outcomes for our new set of observations. We can compare this to the actual testing outcomes in a confusion matrix:
+
+```{r  cache=TRUE}
+procTest <- predict(pre_procExcer,testing_set[,-53])
+predictions_2 <- predict(modelTree,procTest)
+table(predictions_2,testing_set$classe)
+
+confusionMatrix(testing_set$classe, predictions_2)
+
+```
+
+Our model is 95% accurate at predicting on this new data set, suggesting an out of sample error of around 5%. Further, looking at each outcome class we see the model performs consistently across each outcome.
+
+The final part of our project is to apply to a set of observations for which we don't the outcome. To do this we will need to process the data in the same way as set out above.
+
+```{r cache=TRUE}
+evaluation_data <- read.csv("pml-testing.csv")
+evaluation_data <- evaluation_data[,-1]
+evaluation_data_new <- evaluation_data[,-c(blanks_vector,NAs_vector)]
+evaluation_data_new <- evaluation_data_new[,-c(1:6)]
+evaluation_data_new <- tonumeric(evaluation_data_new)
+dim(evaluation_data_new)
+
+procEval <- predict(pre_procExcer,evaluation_data_new[,-53])
+answers <- predict(modelTree,procEval)
+answers
+
+```
+
+These answers will be used in a separate quiz
